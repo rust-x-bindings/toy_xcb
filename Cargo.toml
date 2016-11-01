@@ -6,4 +6,4 @@ license = "MIT"
 
 [dependencies]
 xcb = { version = "0.7", features = ["xlib_xcb", "xkb"] }
-xkbcommon = { version = "0.2", path = "../..", features = ["x11"] }
+xkbcommon = { version = "0.2", features = ["x11"] }

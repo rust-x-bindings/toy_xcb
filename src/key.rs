@@ -120,8 +120,11 @@ impl BitXor for Mods {
 }
 
 
-
-// values are from USB HID table
+/// Represents a physical key (or scancode), using QWERTY US keymap as basis.
+/// I.e. the key "A" on an AZERTY keyboard is represented by `Code::Q`.
+/// This enum has 256 values and is a perfect candidate for index based
+/// look-up table.
+/// Values of enumerants are from the USB HID scancodes table.
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Code {
@@ -365,6 +368,10 @@ pub const SYM_RIGHT_MASK       :isize = 0x0040_0000;
 pub const SYM_LATIN1_SMALL_MASK:isize = 0x0000_0020;
 
 
+// A part of the `Sym` enum was obtained from Qt.
+// Masking system is from toy-xcb
+
+/// Represent a virtual key, which is a key translated with a keymap.
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Sym {

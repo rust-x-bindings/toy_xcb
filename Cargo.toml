@@ -1,0 +1,9 @@
+[package]
+name = "toy_xcb"
+version = "0.1.0"
+authors = ["Remi THEBAULT <remi.thebault@gmail.com>"]
+license = "MIT"
+
+[dependencies]
+xcb = { version = "0.7", features = ["xlib_xcb", "xkb"] }
+xkbcommon = { version = "0.2", path = "../..", features = ["x11"] }

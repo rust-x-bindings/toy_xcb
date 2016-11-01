@@ -1,3 +1,5 @@
+// This file is part of toy_xcb and is released under the terms
+// of the MIT license. See included LICENSE.txt file.
 
 use std::ops::{BitAnd, BitOr, BitXor};
 

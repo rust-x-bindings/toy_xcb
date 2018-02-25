@@ -2,7 +2,7 @@
 // of the MIT license. See included LICENSE.txt file.
 
 use keyboard::Keyboard;
-use geometry::{ISize, IPoint};
+use geometry::IPoint;
 use event::Event;
 use mouse;
 use key;
@@ -140,37 +140,51 @@ impl Window {
     fn translate_event(&self, xcb_ev: xcb::GenericEvent) -> Option<Event> {
         let r = xcb_ev.response_type() & !0x80;
         match r {
-            xcb::KEY_PRESS => Some( self.kbd.make_key_event(xcb::cast_event(&xcb_ev), true) ),
-            xcb::KEY_RELEASE => Some( self.kbd.make_key_event(xcb::cast_event(&xcb_ev), false) ),
+            xcb::KEY_PRESS => Some( self.kbd.make_key_event(
+                unsafe { xcb::cast_event(&xcb_ev) },
+                true
+            ) ),
+            xcb::KEY_RELEASE => Some( self.kbd.make_key_event(
+                unsafe { xcb::cast_event(&xcb_ev) },
+                false
+            ) ),
 
             xcb::BUTTON_PRESS => {
-                let ev = self.make_mouse_event(xcb::cast_event(&xcb_ev));
+                let ev = self.make_mouse_event(unsafe {
+                    xcb::cast_event(&xcb_ev)
+                });
                 Some(Event::MousePress(ev.0, ev.1, ev.2))
             },
             xcb::BUTTON_RELEASE => {
-                let ev = self.make_mouse_event(xcb::cast_event(&xcb_ev));
+                let ev = self.make_mouse_event(unsafe {
+                    xcb::cast_event(&xcb_ev)
+                });
                 Some(Event::MouseRelease(ev.0, ev.1, ev.2))
             },
 
             xcb::ENTER_NOTIFY => Some(Event::Enter(
                 Window::make_enterleave_point(
-                    xcb::cast_event(&xcb_ev)
+                    unsafe { xcb::cast_event(&xcb_ev) }
                 ))
             ),
             xcb::LEAVE_NOTIFY => Some(Event::Leave(
                 Window::make_enterleave_point(
-                    xcb::cast_event(&xcb_ev)
+                    unsafe { xcb::cast_event(&xcb_ev) }
                 ))
             ),
 
             xcb::MOTION_NOTIFY => {
-                let ev = self.make_mouse_event(xcb::cast_event(&xcb_ev));
+                let ev = self.make_mouse_event(unsafe {
+                    xcb::cast_event(&xcb_ev)
+                });
                 Some(Event::MouseMove(ev.0, ev.1, ev.2))
             },
             xcb::CLIENT_MESSAGE => {
                 let wm_protocols = *self.atoms.get(&Atom::WM_PROTOCOLS).unwrap();
                 let wm_delete_window = *self.atoms.get(&Atom::WM_DELETE_WINDOW).unwrap();
-                let cm_ev: &xcb::ClientMessageEvent = xcb::cast_event(&xcb_ev);
+                let cm_ev: &xcb::ClientMessageEvent = unsafe {
+                    xcb::cast_event(&xcb_ev)
+                };
                 if cm_ev.type_() == wm_protocols && cm_ev.format() == 32 {
                     let protocol = cm_ev.data().data32()[0];
                     if protocol == wm_delete_window {
@@ -181,11 +195,15 @@ impl Window {
             }
             _ => {
                 if r == self.kbd_ev {
-                    let xkb_ev: &XkbGenericEvent = xcb::cast_event(&xcb_ev);
+                    let xkb_ev: &XkbGenericEvent = unsafe {
+                        xcb::cast_event(&xcb_ev)
+                    };
                     if xkb_ev.device_id() == self.kbd.get_device_id() as u8 {
                         match xkb_ev.xkb_type() {
                             xcb::xkb::STATE_NOTIFY => {
-                                self.kbd.update_state(xcb::cast_event(&xcb_ev));
+                                self.kbd.update_state(unsafe {
+                                    xcb::cast_event(&xcb_ev)
+                                });
                             }
                             _ => {}
                         }
@@ -258,7 +276,6 @@ impl XkbGenericEvent {
         unsafe { (*self.base.ptr).device_id }
     }
 }
-
 
 iterable_key_enum! {
     Atom =>

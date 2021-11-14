@@ -9,15 +9,16 @@ pub const MIDDLE: u8 = 2;
 pub const RIGHT: u8 = 4;
 pub const MASK: u8 = 7;
 
-
 #[derive(Copy, Clone, PartialEq, Eq, Default, Debug)]
 pub struct Buttons {
-    fields: u8
+    fields: u8,
 }
 
 impl Buttons {
     pub fn new(fields: u8) -> Buttons {
-        Buttons { fields: fields & MASK }
+        Buttons {
+            fields: fields & MASK,
+        }
     }
 
     pub fn none() -> Buttons {
@@ -79,7 +80,7 @@ impl PartialEq<u8> for Buttons {
 }
 
 impl PartialEq<Buttons> for u8 {
-    fn eq (&self, rhs: &Buttons) -> bool {
+    fn eq(&self, rhs: &Buttons) -> bool {
         *self == rhs.fields
     }
 }
@@ -87,21 +88,27 @@ impl PartialEq<Buttons> for u8 {
 impl BitAnd for Buttons {
     type Output = Buttons;
     fn bitand(self, rhs: Buttons) -> Buttons {
-        Buttons { fields: self.fields & rhs.fields }
+        Buttons {
+            fields: self.fields & rhs.fields,
+        }
     }
 }
 
 impl BitOr for Buttons {
     type Output = Buttons;
     fn bitor(self, rhs: Buttons) -> Buttons {
-        Buttons { fields: self.fields | rhs.fields }
+        Buttons {
+            fields: self.fields | rhs.fields,
+        }
     }
 }
 
 impl BitXor for Buttons {
     type Output = Buttons;
     fn bitxor(self, rhs: Buttons) -> Buttons {
-        Buttons { fields: self.fields ^ rhs.fields }
+        Buttons {
+            fields: self.fields ^ rhs.fields,
+        }
     }
 }
 
@@ -113,16 +120,16 @@ fn buts_has() {
     assert!(m.has_right());
     assert!(!m.has_middle());
 
-    assert!(m.has_all(LEFT|RIGHT));
+    assert!(m.has_all(LEFT | RIGHT));
     assert!(m.has_all(LEFT));
     assert!(m.has_all(RIGHT));
-    assert!(!m.has_all(LEFT|RIGHT|MIDDLE));
+    assert!(!m.has_all(LEFT | RIGHT | MIDDLE));
 
-    assert!(m.has_any(LEFT|RIGHT));
+    assert!(m.has_any(LEFT | RIGHT));
     assert!(m.has_any(LEFT));
     assert!(m.has_any(RIGHT));
     assert!(!m.has_any(MIDDLE));
-    assert!(m.has_any(LEFT|RIGHT|MIDDLE));
+    assert!(m.has_any(LEFT | RIGHT | MIDDLE));
 
     assert!(!m.is_none());
 

@@ -1,9 +1,8 @@
 // This file is part of toy_xcb and is released under the terms
 // of the MIT license. See included LICENSE.txt file.
 
-use std::ops::{Add, Sub, Mul, Div};
 use std::cmp::Eq;
-
+use std::ops::{Add, Div, Mul, Sub};
 
 pub type FPoint = Point<f32>;
 pub type IPoint = Point<i32>;
@@ -17,8 +16,6 @@ pub type IRect = Rect<i32>;
 pub type FMargins = Margins<f32>;
 pub type IMargins = Margins<i32>;
 
-
-
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Point<T: Copy> {
     pub x: T,
@@ -30,7 +27,6 @@ impl<T: Copy> Point<T> {
         Point { x: x, y: y }
     }
 }
-
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Size<T: Copy> {
@@ -55,43 +51,53 @@ pub struct Rect<T: Copy> {
 impl<T: Copy> Rect<T> {
     pub fn new(x: T, y: T, w: T, h: T) -> Rect<T> {
         Rect {
-            x: x, y: y, w: w, h: h,
+            x: x,
+            y: y,
+            w: w,
+            h: h,
         }
     }
     pub fn new_s(x: T, y: T, size: Size<T>) -> Rect<T> {
         Rect {
-            x: x, y: y,
-            w: size.w, h: size.h,
+            x: x,
+            y: y,
+            w: size.w,
+            h: size.h,
         }
     }
     pub fn new_p(point: Point<T>, w: T, h: T) -> Rect<T> {
         Rect {
-            x: point.x, y: point.y,
-            w: w, h: h,
+            x: point.x,
+            y: point.y,
+            w: w,
+            h: h,
         }
     }
     pub fn new_ps(point: Point<T>, size: Size<T>) -> Rect<T> {
         Rect {
-            x: point.x, y: point.y,
-            w: size.w, h: size.h,
+            x: point.x,
+            y: point.y,
+            w: size.w,
+            h: size.h,
         }
     }
 
     pub fn point(&self) -> Point<T> {
         Point {
-            x: self.x, y: self.y,
+            x: self.x,
+            y: self.y,
         }
     }
     pub fn size(&self) -> Size<T> {
         Size {
-            w: self.w, h: self.h,
+            w: self.w,
+            h: self.h,
         }
     }
 }
 
-
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub struct Margins<T : Copy> {
+pub struct Margins<T: Copy> {
     pub l: T,
     pub r: T,
     pub t: T,
@@ -99,13 +105,15 @@ pub struct Margins<T : Copy> {
 }
 
 impl<T: Copy> Margins<T> {
-    fn new (l: T, r: T, t: T, b: T) -> Margins<T> {
+    fn new(l: T, r: T, t: T, b: T) -> Margins<T> {
         Margins {
-            l: l, r: r, t: t, b: b,
+            l: l,
+            r: r,
+            t: t,
+            b: b,
         }
     }
 }
-
 
 pub trait HasArea {
     type Output;
@@ -114,7 +122,9 @@ pub trait HasArea {
 }
 
 impl<T> HasArea for Size<T>
-        where T : Mul<Output=T> + Copy {
+where
+    T: Mul<Output = T> + Copy,
+{
     type Output = T;
 
     fn area(&self) -> T {
@@ -123,7 +133,9 @@ impl<T> HasArea for Size<T>
 }
 
 impl<T> HasArea for Rect<T>
-        where T : Mul<Output=T> + Copy {
+where
+    T: Mul<Output = T> + Copy,
+{
     type Output = T;
 
     fn area(&self) -> T {
@@ -132,29 +144,44 @@ impl<T> HasArea for Rect<T>
 }
 
 impl<T> Add for Point<T>
-        where T: Add<Output=T> + Copy {
+where
+    T: Add<Output = T> + Copy,
+{
     type Output = Point<T>;
 
     fn add(self, rhs: Point<T>) -> Point<T> {
-        Point {x: self.x + rhs.x, y: self.y + rhs.y}
+        Point {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
     }
 }
 
 impl<T> Sub for Point<T>
-        where T: Sub<Output=T> + Copy {
+where
+    T: Sub<Output = T> + Copy,
+{
     type Output = Point<T>;
 
     fn sub(self, rhs: Point<T>) -> Point<T> {
-        Point {x: self.x - rhs.x, y: self.y - rhs.y}
+        Point {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
     }
 }
 
 impl<T> Mul<T> for Point<T>
-        where T: Mul<Output=T> + Copy {
+where
+    T: Mul<Output = T> + Copy,
+{
     type Output = Point<T>;
 
-    fn mul (self, rhs: T) -> Point<T> {
-        Point { x: self.x * rhs, y: self.y * rhs }
+    fn mul(self, rhs: T) -> Point<T> {
+        Point {
+            x: self.x * rhs,
+            y: self.y * rhs,
+        }
     }
 }
 // this doesn't compile with overflow error on `self*rhs.x`.
@@ -169,17 +196,23 @@ impl<T> Mul<T> for Point<T>
 // }
 
 impl<T> Div<T> for Point<T>
-        where T: Div<Output=T> + Copy {
+where
+    T: Div<Output = T> + Copy,
+{
     type Output = Point<T>;
 
     fn div(self, rhs: T) -> Point<T> {
-        Point { x: self.x / rhs, y: self.y / rhs }
+        Point {
+            x: self.x / rhs,
+            y: self.y / rhs,
+        }
     }
 }
 
-
 impl<T> Add<Margins<T>> for Rect<T>
-where T: Add<Output=T> + Sub<Output=T> + Copy {
+where
+    T: Add<Output = T> + Sub<Output = T> + Copy,
+{
     type Output = Rect<T>;
 
     fn add(self, rhs: Margins<T>) -> Rect<T> {
@@ -192,9 +225,10 @@ where T: Add<Output=T> + Sub<Output=T> + Copy {
     }
 }
 
-
 impl<T> Sub<Margins<T>> for Rect<T>
-where T: Add<Output=T> + Sub<Output=T> + Copy {
+where
+    T: Add<Output = T> + Sub<Output = T> + Copy,
+{
     type Output = Rect<T>;
 
     fn sub(self, rhs: Margins<T>) -> Rect<T> {
@@ -206,8 +240,6 @@ where T: Add<Output=T> + Sub<Output=T> + Copy {
         }
     }
 }
-
-
 
 #[test]
 fn area() {

@@ -6,11 +6,11 @@ extern crate xkbcommon;
 
 #[macro_use]
 mod macros;
-pub mod key;
-pub mod mouse;
 pub mod event;
 pub mod geometry;
+pub mod key;
 mod keyboard;
+pub mod mouse;
 pub mod window;
 
 pub use event::Event;

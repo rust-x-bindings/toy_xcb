@@ -1,11 +1,10 @@
 // This file is part of toy_xcb and is released under the terms
 // of the MIT license. See included LICENSE.txt file.
 
-use geometry::{ISize, IPoint};
-use mouse;
+use geometry::{IPoint, ISize};
 use key;
+use mouse;
 use window;
-
 
 #[derive(Debug)]
 pub enum Event {
@@ -14,16 +13,16 @@ pub enum Event {
     Expose,
     Close,
 
-    Resize          (ISize),
-    Move            (IPoint),
-    StateChange     (window::State),
-    Enter           (IPoint),
-    Leave           (IPoint),
+    Resize(ISize),
+    Move(IPoint),
+    StateChange(window::State),
+    Enter(IPoint),
+    Leave(IPoint),
 
-    MousePress      ( IPoint, mouse::Buttons, key::Mods ),
-    MouseRelease    ( IPoint, mouse::Buttons, key::Mods ),
-    MouseMove       ( IPoint, mouse::Buttons, key::Mods ),
+    MousePress(IPoint, mouse::Buttons, key::Mods),
+    MouseRelease(IPoint, mouse::Buttons, key::Mods),
+    MouseMove(IPoint, mouse::Buttons, key::Mods),
 
-    KeyPress        ( key::Sym, key::Code, String ),
-    KeyRelease      ( key::Sym, key::Code, String ),
+    KeyPress(key::Sym, key::Code, String),
+    KeyRelease(key::Sym, key::Code, String),
 }

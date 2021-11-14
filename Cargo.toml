@@ -4,6 +4,7 @@ version = "0.2.0-beta.0"
 authors = ["Remi THEBAULT <remi.thebault@gmail.com>"]
 license = "MIT"
 edition = "2018"
+description = "A toy library to examplify the usage of rust-xcb and xkbcommon-rs"
 
 [package.metadata.docs.rs]
 all-features = true

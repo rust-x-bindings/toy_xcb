@@ -1,10 +1,8 @@
 // This file is part of toy_xcb and is released under the terms
 // of the MIT license. See included LICENSE.txt file.
 
-use geometry::{IPoint, ISize};
-use key;
-use mouse;
-use window;
+use super::geometry::{IPoint, ISize};
+use super::{key, mouse, window};
 
 #[derive(Debug)]
 pub enum Event {

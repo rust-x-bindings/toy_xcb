@@ -1,21 +1,21 @@
 // This file is part of toy_xcb and is released under the terms
 // of the MIT license. See included LICENSE.txt file.
 
-use event::Event;
-use key;
+use super::event::Event;
+use super::key;
+use super::Result;
 use xkbcommon::xkb;
 
 use xcb;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::io::{stderr, Write};
 use std::mem;
 
 pub struct Keyboard {
-    context: xkb::Context,
+    _context: xkb::Context,
+    _keymap: xkb::Keymap,
     device_id: i32,
-    keymap: xkb::Keymap,
     state: RefCell<xkb::State>,
     keysym_map: HashMap<u32, key::Sym>,
     keycode_table: [key::Code; 256],
@@ -23,67 +23,41 @@ pub struct Keyboard {
 }
 
 impl Keyboard {
-    pub fn new(connection: &xcb::Connection) -> (Keyboard, u8, u8) {
-        connection.prefetch_extension_data(xcb::xkb::id());
-
-        let (first_ev, first_er) = match connection.get_extension_data(xcb::xkb::id()) {
-            Some(r) => (r.first_event(), r.first_error()),
-            None => {
-                panic!("could not get xkb extension data");
-            }
-        };
-
+    pub fn new(connection: &xcb::Connection) -> Result<Keyboard> {
         {
-            let cookie = xcb::xkb::use_extension(
-                &connection,
+            let xkbver =
+                connection.wait_for_reply(connection.send_request(&xcb::xkb::UseExtension {
+                    wanted_major: xkb::x11::MIN_MAJOR_XKB_VERSION,
+                    wanted_minor: xkb::x11::MIN_MINOR_XKB_VERSION,
+                }))?;
+
+            assert!(
+                xkbver.supported(),
+                "required xcb-xkb-{}-{} is not supported",
                 xkb::x11::MIN_MAJOR_XKB_VERSION,
-                xkb::x11::MIN_MINOR_XKB_VERSION,
+                xkb::x11::MIN_MINOR_XKB_VERSION
             );
-            match cookie.get_reply() {
-                Ok(r) => {
-                    if !r.supported() {
-                        panic!(
-                            "required xcb-xkb-{}-{} is not supported",
-                            xkb::x11::MIN_MAJOR_XKB_VERSION,
-                            xkb::x11::MIN_MINOR_XKB_VERSION
-                        );
-                    }
-                }
-                Err(_) => {
-                    panic!("could not check if xkb is supported");
-                }
-            }
         }
 
-        {
-            let map_parts = xcb::xkb::MAP_PART_KEY_TYPES
-                | xcb::xkb::MAP_PART_KEY_SYMS
-                | xcb::xkb::MAP_PART_MODIFIER_MAP
-                | xcb::xkb::MAP_PART_EXPLICIT_COMPONENTS
-                | xcb::xkb::MAP_PART_KEY_ACTIONS
-                | xcb::xkb::MAP_PART_KEY_BEHAVIORS
-                | xcb::xkb::MAP_PART_VIRTUAL_MODS
-                | xcb::xkb::MAP_PART_VIRTUAL_MOD_MAP;
+        let events =xcb::xkb::EventType::NEW_KEYBOARD_NOTIFY | xcb::xkb::EventType::MAP_NOTIFY | xcb::xkb::EventType::STATE_NOTIFY;
+        let map_parts = xcb::xkb::MapPart::KEY_TYPES |
+            xcb::xkb::MapPart::KEY_SYMS |
+            xcb::xkb::MapPart::MODIFIER_MAP |
+            xcb::xkb::MapPart::EXPLICIT_COMPONENTS |
+            xcb::xkb::MapPart::KEY_ACTIONS |
+            xcb::xkb::MapPart::KEY_BEHAVIORS |
+            xcb::xkb::MapPart::VIRTUAL_MODS |
+            xcb::xkb::MapPart::VIRTUAL_MOD_MAP;
 
-            let events = xcb::xkb::EVENT_TYPE_NEW_KEYBOARD_NOTIFY
-                | xcb::xkb::EVENT_TYPE_MAP_NOTIFY
-                | xcb::xkb::EVENT_TYPE_STATE_NOTIFY;
-
-            let cookie = xcb::xkb::select_events_checked(
-                &connection,
-                xcb::xkb::ID_USE_CORE_KBD as u16,
-                events as u16,
-                0,
-                events as u16,
-                map_parts as u16,
-                map_parts as u16,
-                None,
-            );
-
-            cookie
-                .request_check()
-                .expect("failed to select notify events from xcb xkb");
-        }
+        connection.check_request(connection.send_request_checked(&xcb::xkb::SelectEvents {
+            device_spec: unsafe { mem::transmute::<_, u32>(xcb::xkb::Id::UseCoreKbd) } as xcb::xkb::DeviceSpec,
+            affect_which: events,
+            clear: xcb::xkb::EventType::empty(),
+            select_all: events,
+            affect_map: map_parts,
+            map: map_parts,
+            details: &[],
+        }))?;
 
         let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
         let device_id = xkb::x11::get_core_keyboard_device_id(&connection);
@@ -95,23 +69,20 @@ impl Keyboard {
         );
         let state = xkb::x11::state_new_from_device(&keymap, &connection, device_id);
 
-        let kbd = Keyboard {
-            context: context,
-            device_id: device_id,
-            keymap: keymap,
+        Ok(Keyboard {
+            _context: context,
+            _keymap: keymap,
+            device_id,
             state: RefCell::new(state),
             keysym_map: build_keysym_map(),
             keycode_table: build_keycode_table(),
             mods: Cell::new(0),
-        };
-
-        (kbd, first_ev, first_er)
+        })
     }
 
-    pub fn make_key_event(&self, xcb_ev: &xcb::KeyPressEvent, press: bool) -> Event {
+    pub fn make_key_event(&self, xcb_ev: &xcb::x::KeyPressEvent, press: bool) -> Event {
         let xcode = xcb_ev.detail() as xkb::Keycode;
         let xsym = self.state.borrow().key_get_one_sym(xcode);
-        let pressed = (xcb_ev.response_type() & !0x80) == xcb::KEY_PRESS;
 
         let code = self.get_keycode(xcode);
         let mut mod_mask: u8 = 0;
@@ -145,7 +116,7 @@ impl Keyboard {
 
         if mod_mask != 0 {
             let mut mods = self.mods.get();
-            if pressed {
+            if press {
                 mods |= mod_mask;
             } else {
                 mods &= !mod_mask;
@@ -171,9 +142,9 @@ impl Keyboard {
     // for convenience, this fn takes &self, not &mut self
     pub fn update_state(&self, ev: &xcb::xkb::StateNotifyEvent) {
         self.state.borrow_mut().update_mask(
-            ev.base_mods() as xkb::ModMask,
-            ev.latched_mods() as xkb::ModMask,
-            ev.locked_mods() as xkb::ModMask,
+            ev.base_mods().bits() as xkb::ModMask,
+            ev.latched_mods().bits() as xkb::ModMask,
+            ev.locked_mods().bits() as xkb::ModMask,
             ev.base_group() as xkb::LayoutIndex,
             ev.latched_group() as xkb::LayoutIndex,
             ev.locked_group() as xkb::LayoutIndex,
@@ -184,17 +155,17 @@ impl Keyboard {
         self.device_id
     }
 
-    fn mod_active(&self, name: &str) -> bool {
-        let ind = self.keymap.mod_get_index(&name);
-        self.state
-            .borrow()
-            .mod_index_is_active(ind, xkb::STATE_MODS_DEPRESSED)
-    }
+    // fn mod_active(&self, name: &str) -> bool {
+    //     let ind = self.keymap.mod_get_index(&name);
+    //     self.state
+    //         .borrow()
+    //         .mod_index_is_active(ind, xkb::STATE_MODS_DEPRESSED)
+    // }
 
     fn get_keycode(&self, xcode: xkb::Keycode) -> key::Code {
         let xcode = xcode as usize;
         if xcode >= self.keycode_table.len() {
-            writeln!(&mut stderr(), "keycode 0x{:x} is out of bounds", xcode);
+            eprintln!("keycode 0x{:x} is out of bounds", xcode);
             return key::Code::Unknown;
         }
         self.keycode_table[xcode]

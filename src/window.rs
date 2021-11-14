@@ -1,13 +1,17 @@
 // This file is part of toy_xcb and is released under the terms
 // of the MIT license. See included LICENSE.txt file.
 
-use event::Event;
-use geometry::IPoint;
-use key;
-use keyboard::Keyboard;
-use mouse;
+use super::atom::Atom;
+use super::event::Event;
+use super::geometry::IPoint;
+use super::key;
+use super::keyboard::Keyboard;
+use super::mouse;
+use super::{Result};
 
-use xcb;
+use xcb::{self, Xid};
+use xcb::x;
+use xcb::xkb;
 
 use std::collections::HashMap;
 
@@ -22,80 +26,71 @@ pub enum State {
 
 pub struct Window {
     conn: xcb::Connection,
-    atoms: HashMap<Atom, xcb::Atom>,
+    atoms: HashMap<Atom, x::Atom>,
     def_screen: i32,
-    kbd_ev: u8,
     kbd: Keyboard,
 
-    win: xcb::Window,
+    win: x::Window,
     title: String,
 }
 
 impl Window {
-    pub fn new(width: u16, height: u16, title: String) -> Window {
+    pub fn new(width: u16, height: u16, title: String) -> Result<Window> {
         let (conn, def_screen) =
-            xcb::Connection::connect_with_xlib_display().expect("could not connect to X server");
+            xcb::Connection::connect_with_xlib_display_and_extensions(&[xcb::Extension::Xkb], &[])?;
         conn.set_event_queue_owner(xcb::EventQueueOwner::Xcb);
 
         let atoms = {
             let mut cookies = Vec::with_capacity(Atom::num_variants());
             for atom in Atom::variants() {
                 let atom_name = format!("{:?}", atom);
-                cookies.push(xcb::intern_atom(&conn, true, &atom_name));
+                cookies.push(Some(conn.send_request(&x::InternAtom {
+                    only_if_exists: true,
+                    name: &atom_name,
+                })));
             }
             let mut atoms = HashMap::with_capacity(Atom::num_variants());
             for (i, atom) in Atom::variants().enumerate() {
-                atoms.insert(
-                    *atom,
-                    match cookies[i].get_reply() {
-                        Ok(r) => r.atom(),
-                        Err(_) => {
-                            panic!("could not find atom {:?}", atom);
-                        }
-                    },
-                );
+                atoms.insert(*atom, conn.wait_for_reply(cookies[i].take().unwrap())?.atom());
             }
             atoms
         };
 
-        let (kbd, kbd_ev, _) = Keyboard::new(&conn);
+        let kbd = Keyboard::new(&conn)?;
         let win = {
             let win = conn.generate_id();
             let setup = conn.get_setup();
             let screen = setup.roots().nth(def_screen as usize).unwrap();
 
-            let values = [
-                (xcb::CW_BACK_PIXEL, screen.white_pixel()),
-                (
-                    xcb::CW_EVENT_MASK,
-                    xcb::EVENT_MASK_KEY_PRESS
-                        | xcb::EVENT_MASK_KEY_RELEASE
-                        | xcb::EVENT_MASK_BUTTON_PRESS
-                        | xcb::EVENT_MASK_BUTTON_RELEASE
-                        | xcb::EVENT_MASK_ENTER_WINDOW
-                        | xcb::EVENT_MASK_LEAVE_WINDOW
-                        | xcb::EVENT_MASK_POINTER_MOTION
-                        | xcb::EVENT_MASK_BUTTON_MOTION
-                        | xcb::EVENT_MASK_EXPOSURE
-                        | xcb::EVENT_MASK_STRUCTURE_NOTIFY
-                        | xcb::EVENT_MASK_PROPERTY_CHANGE,
-                ),
-            ];
-
-            xcb::create_window(
-                &conn,
-                xcb::COPY_FROM_PARENT as u8,
-                win,
-                screen.root(),
-                0,
-                0,
+            conn.check_request(conn.send_request_checked(&x::CreateWindow {
+                depth: x::COPY_FROM_PARENT as u8,
+                wid: win,
+                parent: screen.root(),
+                x: 0,
+                y: 0,
                 width,
                 height,
-                0,
-                xcb::WINDOW_CLASS_INPUT_OUTPUT as u16,
-                screen.root_visual(),
-                &values,
-            );
+                border_width: 0,
+                class: x::WindowClass::InputOutput,
+                visual: screen.root_visual(),
+                value_list: &[
+                    x::Cw::BackPixel(screen.white_pixel()),
+                    x::Cw::EventMask(
+                        (x::EventMask::KEY_PRESS
+                            | x::EventMask::KEY_RELEASE
+                            | x::EventMask::BUTTON_PRESS
+                            | x::EventMask::BUTTON_RELEASE
+                            | x::EventMask::ENTER_WINDOW
+                            | x::EventMask::LEAVE_WINDOW
+                            | x::EventMask::POINTER_MOTION
+                            | x::EventMask::BUTTON_MOTION
+                            | x::EventMask::EXPOSURE
+                            | x::EventMask::STRUCTURE_NOTIFY
+                            | x::EventMask::PROPERTY_CHANGE)
+                            .bits(),
+                    ),
+                ],
+            }))?;
 
             win
         };
@@ -103,214 +98,144 @@ impl Window {
         let wm_delete_window = *atoms.get(&Atom::WM_DELETE_WINDOW).unwrap();
         let wm_protocols = *atoms.get(&Atom::WM_PROTOCOLS).unwrap();
 
-        let values = [wm_delete_window];
-        xcb::change_property(
-            &conn,
-            xcb::PROP_MODE_REPLACE as u8,
-            win,
-            wm_protocols,
-            xcb::ATOM_ATOM,
-            32,
-            &values,
-        );
+        conn.send_request(&x::ChangeProperty {
+            mode: x::PropMode::Replace,
+            window: win,
+            property: wm_protocols,
+            r#type: x::ATOM_ATOM,
+            data: &[wm_delete_window],
+        });
 
         // setting title
         if !title.is_empty() {
-            xcb::change_property(
-                &conn,
-                xcb::PROP_MODE_REPLACE as u8,
-                win,
-                xcb::ATOM_WM_NAME,
-                xcb::ATOM_STRING,
-                8,
-                title.as_bytes(),
-            );
+            conn.send_request(&x::ChangeProperty {
+                mode: x::PropMode::Replace,
+                window: win,
+                property: x::ATOM_WM_NAME,
+                r#type: x::ATOM_STRING,
+                data: title.as_bytes(),
+            });
         }
 
-        xcb::map_window(&conn, win);
-        conn.flush();
+        conn.send_request(&x::MapWindow { window: win });
+        conn.flush()?;
 
-        Window {
+        Ok(Window {
             conn: conn,
             atoms: atoms,
             def_screen: def_screen,
-            kbd_ev: kbd_ev,
-            kbd: kbd,
+            kbd,
             win: win,
             title: title,
-        }
+        })
     }
 
-    pub fn wait_event(&self) -> Option<Event> {
-        self.conn
-            .wait_for_event()
-            .and_then(|ev| self.translate_event(ev))
+    pub fn wait_event(&self) -> Result<Event> {
+        let xcb_ev = self.conn.wait_for_event()?;
+        match self.translate_event(xcb_ev) {
+            Some(ev) => Ok(ev),
+            None => self.wait_event(),
+        }
     }
 
     pub fn get_title(&self) -> String {
         self.title.clone()
     }
+
     pub fn set_title(&mut self, title: String) {
         if title != self.title {
             self.title = title;
-            xcb::change_property(
-                &self.conn,
-                xcb::PROP_MODE_REPLACE as u8,
-                self.win,
-                xcb::ATOM_WM_NAME,
-                xcb::ATOM_STRING,
-                8,
-                self.title.as_bytes(),
-            );
+            self.conn.send_request(&x::ChangeProperty {
+                mode: x::PropMode::Replace,
+                window: self.win,
+                property: x::ATOM_WM_NAME,
+                r#type: x::ATOM_STRING,
+                data: self.title.as_bytes(),
+            });
+            self.conn.flush().unwrap(); // should probably return a result
         }
     }
 
-    fn translate_event(&self, xcb_ev: xcb::GenericEvent) -> Option<Event> {
-        let r = xcb_ev.response_type() & !0x80;
-        match r {
-            xcb::KEY_PRESS => Some(
-                self.kbd
-                    .make_key_event(unsafe { xcb::cast_event(&xcb_ev) }, true),
-            ),
-            xcb::KEY_RELEASE => Some(
-                self.kbd
-                    .make_key_event(unsafe { xcb::cast_event(&xcb_ev) }, false),
-            ),
+    pub fn default_screen(&self) -> usize {
+        self.def_screen as usize
+    }
 
-            xcb::BUTTON_PRESS => {
-                let ev = self.make_mouse_event(unsafe { xcb::cast_event(&xcb_ev) });
+    fn translate_event(&self, xcb_ev: xcb::Event) -> Option<Event> {
+        match xcb_ev {
+            xcb::Event::X(x::Event::KeyPress(xcb_ev)) => Some(self.kbd.make_key_event(&xcb_ev, true)),
+            xcb::Event::X(x::Event::KeyRelease(xcb_ev)) => Some(self.kbd.make_key_event(&xcb_ev, false)),
+            xcb::Event::X(x::Event::ButtonPress(xcb_ev)) => {
+                let ev = self.make_mouse_event(&xcb_ev);
                 Some(Event::MousePress(ev.0, ev.1, ev.2))
             }
-            xcb::BUTTON_RELEASE => {
-                let ev = self.make_mouse_event(unsafe { xcb::cast_event(&xcb_ev) });
+            xcb::Event::X(x::Event::ButtonRelease(xcb_ev)) => {
+                let ev = self.make_mouse_event(&xcb_ev);
                 Some(Event::MouseRelease(ev.0, ev.1, ev.2))
             }
-
-            xcb::ENTER_NOTIFY => Some(Event::Enter(Window::make_enterleave_point(unsafe {
-                xcb::cast_event(&xcb_ev)
-            }))),
-            xcb::LEAVE_NOTIFY => Some(Event::Leave(Window::make_enterleave_point(unsafe {
-                xcb::cast_event(&xcb_ev)
-            }))),
-
-            xcb::MOTION_NOTIFY => {
-                let ev = self.make_mouse_event(unsafe { xcb::cast_event(&xcb_ev) });
-                Some(Event::MouseMove(ev.0, ev.1, ev.2))
+            xcb::Event::X(x::Event::EnterNotify(xcb_ev)) => {
+                Some(Event::Enter(Window::make_enterleave_point(&xcb_ev)))
             }
-            xcb::CLIENT_MESSAGE => {
+            xcb::Event::X(x::Event::LeaveNotify(xcb_ev)) => {
+                Some(Event::Leave(Window::make_enterleave_point(&xcb_ev)))
+            }
+            xcb::Event::X(x::Event::MotionNotify(xcb_ev)) => {
+                let point = IPoint {
+                    x: xcb_ev.event_x() as _,
+                    y: xcb_ev.event_y() as _,
+                };
+                let buttons = translate_buttons(xcb_ev.state());
+                let mods = self.kbd.get_mods();
+                Some(Event::MouseMove(point, buttons, mods))
+            }
+            xcb::Event::X(x::Event::ClientMessage(xcb_ev)) => {
                 let wm_protocols = *self.atoms.get(&Atom::WM_PROTOCOLS).unwrap();
                 let wm_delete_window = *self.atoms.get(&Atom::WM_DELETE_WINDOW).unwrap();
-                let cm_ev: &xcb::ClientMessageEvent = unsafe { xcb::cast_event(&xcb_ev) };
-                if cm_ev.type_() == wm_protocols && cm_ev.format() == 32 {
-                    let protocol = cm_ev.data().data32()[0];
-                    if protocol == wm_delete_window {
-                        return Some(Event::Close);
+                if xcb_ev.r#type() == wm_protocols {
+                    if let x::ClientMessageData::Data32([protocol, ..]) = xcb_ev.data() {
+                        if protocol == wm_delete_window.resource_id() {
+                            return Some(Event::Close);
+                        }
                     }
                 }
                 None
             }
-            _ => {
-                if r == self.kbd_ev {
-                    let xkb_ev: &XkbGenericEvent = unsafe { xcb::cast_event(&xcb_ev) };
-                    if xkb_ev.device_id() == self.kbd.get_device_id() as u8 {
-                        match xkb_ev.xkb_type() {
-                            xcb::xkb::STATE_NOTIFY => {
-                                self.kbd.update_state(unsafe { xcb::cast_event(&xcb_ev) });
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    // xkb events do not translate into application event
-                    // so once this done, we wait and return the next event
-                    self.wait_event()
-                } else {
-                    None
+            xcb::Event::Xkb(xkb::Event::StateNotify(xcb_ev)) => {
+                if xcb_ev.device_id() as i32 == self.kbd.get_device_id() {
+                    self.kbd.update_state(&xcb_ev);
                 }
+                None
             }
+            _ => None,
         }
     }
 
     fn make_mouse_event(
         &self,
-        xcb_ev: &xcb::ButtonPressEvent,
+        xcb_ev: &x::ButtonPressEvent,
     ) -> (IPoint, mouse::Buttons, key::Mods) {
         let pos = IPoint {
             x: xcb_ev.event_x() as i32,
             y: xcb_ev.event_y() as i32,
         };
-        let but = match xcb_ev.detail() {
-            1 => mouse::Buttons::left(),
-            2 => mouse::Buttons::middle(),
-            3 => mouse::Buttons::right(),
-            _ => mouse::Buttons::none(),
-        };
 
-        (pos, but, self.kbd.get_mods())
+        (pos, translate_buttons(xcb_ev.state()), self.kbd.get_mods())
     }
 
-    fn make_enterleave_point(xcb_ev: &xcb::EnterNotifyEvent) -> IPoint {
+    fn make_enterleave_point(xcb_ev: &x::EnterNotifyEvent) -> IPoint {
         IPoint::new(xcb_ev.event_x() as i32, xcb_ev.event_y() as i32)
     }
 }
 
-/// struct that has fields common to the 3 different xkb events
-/// (StateNotify, NewKeyboardNotify, MapNotify)
-#[repr(C)]
-struct xcb_xkb_generic_event_t {
-    response_type: u8,
-    xkb_type: u8,
-    sequence: u16,
-    time: xcb::Timestamp,
-    device_id: u8,
-}
-
-struct XkbGenericEvent {
-    base: xcb::Event<xcb_xkb_generic_event_t>,
-}
-
-impl XkbGenericEvent {
-    pub fn response_type(&self) -> u8 {
-        unsafe { (*self.base.ptr).response_type }
+fn translate_buttons(xcb_state: x::KeyButMask) -> mouse::Buttons {
+    let mut but = mouse::Buttons::empty();
+    if xcb_state.contains(x::KeyButMask::BUTTON1) {
+        but |= mouse::Buttons::LEFT;
     }
-    #[allow(non_snake_case)]
-    pub fn xkb_type(&self) -> u8 {
-        unsafe { (*self.base.ptr).xkb_type }
+    if xcb_state.contains(x::KeyButMask::BUTTON2) {
+        but |= mouse::Buttons::MIDDLE;
     }
-    pub fn sequence(&self) -> u16 {
-        unsafe { (*self.base.ptr).sequence }
+    if xcb_state.contains(x::KeyButMask::BUTTON3) {
+        but |= mouse::Buttons::RIGHT;
     }
-    pub fn time(&self) -> xcb::Timestamp {
-        unsafe { (*self.base.ptr).time }
-    }
-    #[allow(non_snake_case)]
-    pub fn device_id(&self) -> u8 {
-        unsafe { (*self.base.ptr).device_id }
-    }
-}
-
-iterable_key_enum! {
-    Atom =>
-        UTF8_STRING,
-
-        WM_PROTOCOLS,
-        WM_DELETE_WINDOW,
-        WM_TRANSIENT_FOR,
-        WM_CHANGE_STATE,
-        WM_STATE,
-        _NET_WM_STATE,
-        _NET_WM_STATE_MODAL,
-        _NET_WM_STATE_STICKY,
-        _NET_WM_STATE_MAXIMIZED_VERT,
-        _NET_WM_STATE_MAXIMIZED_HORZ,
-        _NET_WM_STATE_SHADED,
-        _NET_WM_STATE_SKIP_TASKBAR,
-        _NET_WM_STATE_SKIP_PAGER,
-        _NET_WM_STATE_HIDDEN,
-        _NET_WM_STATE_FULLSCREEN,
-        _NET_WM_STATE_ABOVE,
-        _NET_WM_STATE_BELOW,
-        _NET_WM_STATE_DEMANDS_ATTENTION,
-        _NET_WM_STATE_FOCUSED,
-        _NET_WM_NAME
+    but
 }

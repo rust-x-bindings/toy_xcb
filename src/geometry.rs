@@ -105,7 +105,7 @@ pub struct Margins<T: Copy> {
 }
 
 impl<T: Copy> Margins<T> {
-    fn new(l: T, r: T, t: T, b: T) -> Margins<T> {
+    pub fn new(l: T, r: T, t: T, b: T) -> Margins<T> {
         Margins {
             l: l,
             r: r,

@@ -7,11 +7,11 @@ use super::geometry::IPoint;
 use super::key;
 use super::keyboard::Keyboard;
 use super::mouse;
-use super::{Result};
+use super::Result;
 
-use xcb::{self, Xid};
 use xcb::x;
 use xcb::xkb;
+use xcb::{self, Xid};
 
 use std::collections::HashMap;
 
@@ -51,7 +51,10 @@ impl Window {
             }
             let mut atoms = HashMap::with_capacity(Atom::num_variants());
             for (i, atom) in Atom::variants().enumerate() {
-                atoms.insert(*atom, conn.wait_for_reply(cookies[i].take().unwrap())?.atom());
+                atoms.insert(
+                    *atom,
+                    conn.wait_for_reply(cookies[i].take().unwrap())?.atom(),
+                );
             }
             atoms
         };
@@ -62,35 +65,37 @@ impl Window {
             let setup = conn.get_setup();
             let screen = setup.roots().nth(def_screen as usize).unwrap();
 
-            conn.check_request(conn.send_request_checked(&x::CreateWindow {
-                depth: x::COPY_FROM_PARENT as u8,
-                wid: win,
-                parent: screen.root(),
-                x: 0,
-                y: 0,
-                width,
-                height,
-                border_width: 0,
-                class: x::WindowClass::InputOutput,
-                visual: screen.root_visual(),
-                value_list: &[
-                    x::Cw::BackPixel(screen.white_pixel()),
-                    x::Cw::EventMask(
-                        (x::EventMask::KEY_PRESS
-                            | x::EventMask::KEY_RELEASE
-                            | x::EventMask::BUTTON_PRESS
-                            | x::EventMask::BUTTON_RELEASE
-                            | x::EventMask::ENTER_WINDOW
-                            | x::EventMask::LEAVE_WINDOW
-                            | x::EventMask::POINTER_MOTION
-                            | x::EventMask::BUTTON_MOTION
-                            | x::EventMask::EXPOSURE
-                            | x::EventMask::STRUCTURE_NOTIFY
-                            | x::EventMask::PROPERTY_CHANGE)
-                            .bits(),
-                    ),
-                ],
-            }))?;
+            conn.check_request(
+                conn.send_request_checked(&x::CreateWindow {
+                    depth: x::COPY_FROM_PARENT as u8,
+                    wid: win,
+                    parent: screen.root(),
+                    x: 0,
+                    y: 0,
+                    width,
+                    height,
+                    border_width: 0,
+                    class: x::WindowClass::InputOutput,
+                    visual: screen.root_visual(),
+                    value_list: &[
+                        x::Cw::BackPixel(screen.white_pixel()),
+                        x::Cw::EventMask(
+                            (x::EventMask::KEY_PRESS
+                                | x::EventMask::KEY_RELEASE
+                                | x::EventMask::BUTTON_PRESS
+                                | x::EventMask::BUTTON_RELEASE
+                                | x::EventMask::ENTER_WINDOW
+                                | x::EventMask::LEAVE_WINDOW
+                                | x::EventMask::POINTER_MOTION
+                                | x::EventMask::BUTTON_MOTION
+                                | x::EventMask::EXPOSURE
+                                | x::EventMask::STRUCTURE_NOTIFY
+                                | x::EventMask::PROPERTY_CHANGE)
+                                .bits(),
+                        ),
+                    ],
+                }),
+            )?;
 
             win
         };
@@ -162,8 +167,12 @@ impl Window {
 
     fn translate_event(&self, xcb_ev: xcb::Event) -> Option<Event> {
         match xcb_ev {
-            xcb::Event::X(x::Event::KeyPress(xcb_ev)) => Some(self.kbd.make_key_event(&xcb_ev, true)),
-            xcb::Event::X(x::Event::KeyRelease(xcb_ev)) => Some(self.kbd.make_key_event(&xcb_ev, false)),
+            xcb::Event::X(x::Event::KeyPress(xcb_ev)) => {
+                Some(self.kbd.make_key_event(&xcb_ev, true))
+            }
+            xcb::Event::X(x::Event::KeyRelease(xcb_ev)) => {
+                Some(self.kbd.make_key_event(&xcb_ev, false))
+            }
             xcb::Event::X(x::Event::ButtonPress(xcb_ev)) => {
                 let ev = self.make_mouse_event(&xcb_ev);
                 Some(Event::MousePress(ev.0, ev.1, ev.2))

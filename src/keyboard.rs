@@ -39,18 +39,21 @@ impl Keyboard {
             );
         }
 
-        let events =xcb::xkb::EventType::NEW_KEYBOARD_NOTIFY | xcb::xkb::EventType::MAP_NOTIFY | xcb::xkb::EventType::STATE_NOTIFY;
-        let map_parts = xcb::xkb::MapPart::KEY_TYPES |
-            xcb::xkb::MapPart::KEY_SYMS |
-            xcb::xkb::MapPart::MODIFIER_MAP |
-            xcb::xkb::MapPart::EXPLICIT_COMPONENTS |
-            xcb::xkb::MapPart::KEY_ACTIONS |
-            xcb::xkb::MapPart::KEY_BEHAVIORS |
-            xcb::xkb::MapPart::VIRTUAL_MODS |
-            xcb::xkb::MapPart::VIRTUAL_MOD_MAP;
+        let events = xcb::xkb::EventType::NEW_KEYBOARD_NOTIFY
+            | xcb::xkb::EventType::MAP_NOTIFY
+            | xcb::xkb::EventType::STATE_NOTIFY;
+        let map_parts = xcb::xkb::MapPart::KEY_TYPES
+            | xcb::xkb::MapPart::KEY_SYMS
+            | xcb::xkb::MapPart::MODIFIER_MAP
+            | xcb::xkb::MapPart::EXPLICIT_COMPONENTS
+            | xcb::xkb::MapPart::KEY_ACTIONS
+            | xcb::xkb::MapPart::KEY_BEHAVIORS
+            | xcb::xkb::MapPart::VIRTUAL_MODS
+            | xcb::xkb::MapPart::VIRTUAL_MOD_MAP;
 
         connection.check_request(connection.send_request_checked(&xcb::xkb::SelectEvents {
-            device_spec: unsafe { mem::transmute::<_, u32>(xcb::xkb::Id::UseCoreKbd) } as xcb::xkb::DeviceSpec,
+            device_spec: unsafe { mem::transmute::<_, u32>(xcb::xkb::Id::UseCoreKbd) }
+                as xcb::xkb::DeviceSpec,
             affect_which: events,
             clear: xcb::xkb::EventType::empty(),
             select_all: events,

@@ -1,7 +1,6 @@
 // This file is part of toy_xcb and is released under the terms
 // of the MIT license. See included LICENSE.txt file.
 
-use super::atom::Atom;
 use super::event::Event;
 use super::geometry::IPoint;
 use super::key;
@@ -13,7 +12,32 @@ use xcb::x;
 use xcb::xkb;
 use xcb::{self, Xid};
 
-use std::collections::HashMap;
+xcb::atoms_struct! {
+    #[derive(Copy, Clone, Debug)]
+    pub(crate) struct Atoms {
+        pub utf8_string                     => b"UTF8_STRING",
+        pub wm_protocols                    => b"WM_PROTOCOLS",
+        pub wm_delete_window                => b"WM_DELETE_WINDOW",
+        pub wm_transient_for                => b"WM_TRANSIENT_FOR",
+        pub wm_change_state                 => b"WM_CHANGE_STATE",
+        pub wm_state                        => b"WM_STATE",
+        pub net_wm_state                    => b"_NET_WM_STATE",
+        pub net_wm_state_modal              => b"_NET_WM_STATE_MODAL",
+        pub net_wm_state_sticky             => b"_NET_WM_STATE_STICKY",
+        pub net_wm_state_maximized_vert     => b"_NET_WM_STATE_MAXIMIZED_VERT",
+        pub net_wm_state_maximized_horz     => b"_NET_WM_STATE_MAXIMIZED_HORZ",
+        pub net_wm_state_shaded             => b"_NET_WM_STATE_SHADED",
+        pub net_wm_state_skip_taskbar       => b"_NET_WM_STATE_SKIP_TASKBAR",
+        pub net_wm_state_skip_pager         => b"_NET_WM_STATE_SKIP_PAGER",
+        pub net_wm_state_hidden             => b"_NET_WM_STATE_HIDDEN",
+        pub net_wm_state_fullscreen         => b"_NET_WM_STATE_FULLSCREEN",
+        pub net_wm_state_above              => b"_NET_WM_STATE_ABOVE",
+        pub net_wm_state_below              => b"_NET_WM_STATE_BELOW",
+        pub net_wm_state_demands_attention  => b"_NET_WM_STATE_DEMANDS_ATTENTION",
+        pub net_wm_state_focused            => b"_NET_WM_STATE_FOCUSED",
+        pub net_wm_name                     => b"_NET_WM_NAME",
+    }
+}
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum State {
@@ -26,7 +50,7 @@ pub enum State {
 
 pub struct Window {
     conn: xcb::Connection,
-    atoms: HashMap<Atom, x::Atom>,
+    atoms: Atoms,
     def_screen: i32,
     kbd: Keyboard,
 
@@ -40,24 +64,7 @@ impl Window {
             xcb::Connection::connect_with_xlib_display_and_extensions(&[xcb::Extension::Xkb], &[])?;
         conn.set_event_queue_owner(xcb::EventQueueOwner::Xcb);
 
-        let atoms = {
-            let mut cookies = Vec::with_capacity(Atom::num_variants());
-            for atom in Atom::variants() {
-                let atom_name = format!("{:?}", atom);
-                cookies.push(Some(conn.send_request(&x::InternAtom {
-                    only_if_exists: true,
-                    name: &atom_name,
-                })));
-            }
-            let mut atoms = HashMap::with_capacity(Atom::num_variants());
-            for (i, atom) in Atom::variants().enumerate() {
-                atoms.insert(
-                    *atom,
-                    conn.wait_for_reply(cookies[i].take().unwrap())?.atom(),
-                );
-            }
-            atoms
-        };
+        let atoms = Atoms::intern_all(&conn)?;
 
         let kbd = Keyboard::new(&conn)?;
         let win = {
@@ -65,50 +72,44 @@ impl Window {
             let setup = conn.get_setup();
             let screen = setup.roots().nth(def_screen as usize).unwrap();
 
-            conn.check_request(
-                conn.send_request_checked(&x::CreateWindow {
-                    depth: x::COPY_FROM_PARENT as u8,
-                    wid: win,
-                    parent: screen.root(),
-                    x: 0,
-                    y: 0,
-                    width,
-                    height,
-                    border_width: 0,
-                    class: x::WindowClass::InputOutput,
-                    visual: screen.root_visual(),
-                    value_list: &[
-                        x::Cw::BackPixel(screen.white_pixel()),
-                        x::Cw::EventMask(
-                            (x::EventMask::KEY_PRESS
-                                | x::EventMask::KEY_RELEASE
-                                | x::EventMask::BUTTON_PRESS
-                                | x::EventMask::BUTTON_RELEASE
-                                | x::EventMask::ENTER_WINDOW
-                                | x::EventMask::LEAVE_WINDOW
-                                | x::EventMask::POINTER_MOTION
-                                | x::EventMask::BUTTON_MOTION
-                                | x::EventMask::EXPOSURE
-                                | x::EventMask::STRUCTURE_NOTIFY
-                                | x::EventMask::PROPERTY_CHANGE)
-                                .bits(),
-                        ),
-                    ],
-                }),
-            )?;
+            conn.check_request(conn.send_request_checked(&x::CreateWindow {
+                depth: x::COPY_FROM_PARENT as u8,
+                wid: win,
+                parent: screen.root(),
+                x: 0,
+                y: 0,
+                width,
+                height,
+                border_width: 0,
+                class: x::WindowClass::InputOutput,
+                visual: screen.root_visual(),
+                value_list: &[
+                    x::Cw::BackPixel(screen.white_pixel()),
+                    x::Cw::EventMask(
+                        x::EventMask::KEY_PRESS
+                            | x::EventMask::KEY_RELEASE
+                            | x::EventMask::BUTTON_PRESS
+                            | x::EventMask::BUTTON_RELEASE
+                            | x::EventMask::ENTER_WINDOW
+                            | x::EventMask::LEAVE_WINDOW
+                            | x::EventMask::POINTER_MOTION
+                            | x::EventMask::BUTTON_MOTION
+                            | x::EventMask::EXPOSURE
+                            | x::EventMask::STRUCTURE_NOTIFY
+                            | x::EventMask::PROPERTY_CHANGE,
+                    ),
+                ],
+            }))?;
 
             win
         };
 
-        let wm_delete_window = *atoms.get(&Atom::WM_DELETE_WINDOW).unwrap();
-        let wm_protocols = *atoms.get(&Atom::WM_PROTOCOLS).unwrap();
-
         conn.send_request(&x::ChangeProperty {
             mode: x::PropMode::Replace,
             window: win,
-            property: wm_protocols,
+            property: atoms.wm_protocols,
             r#type: x::ATOM_ATOM,
-            data: &[wm_delete_window],
+            data: &[atoms.wm_delete_window],
         });
 
         // setting title
@@ -197,11 +198,9 @@ impl Window {
                 Some(Event::MouseMove(point, buttons, mods))
             }
             xcb::Event::X(x::Event::ClientMessage(xcb_ev)) => {
-                let wm_protocols = *self.atoms.get(&Atom::WM_PROTOCOLS).unwrap();
-                let wm_delete_window = *self.atoms.get(&Atom::WM_DELETE_WINDOW).unwrap();
-                if xcb_ev.r#type() == wm_protocols {
+                if xcb_ev.r#type() == self.atoms.wm_protocols {
                     if let x::ClientMessageData::Data32([protocol, ..]) = xcb_ev.data() {
-                        if protocol == wm_delete_window.resource_id() {
+                        if protocol == self.atoms.wm_delete_window.resource_id() {
                             return Some(Event::Close);
                         }
                     }
